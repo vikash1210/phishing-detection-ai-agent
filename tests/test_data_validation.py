@@ -71,6 +71,7 @@ def test_rejects_missing_values():
     ("url", "message"),
     [
         ("https://example.com:abc/path", "invalid authority"),
+        ("https://example.com:-1/path", "invalid authority"),
         ("https://example.com:65536/path", "invalid authority"),
         ("https://example.com:/path", "empty port"),
         ("https://example.com:80:90/path", "invalid authority"),
@@ -79,6 +80,8 @@ def test_rejects_missing_values():
         ("https://example..com/path", "invalid hostname"),
         ("https://bad_host.example/path", "invalid hostname"),
         ("https://-bad.example/path", "invalid hostname"),
+        (f"https://{'a' * 64}.example/path", "invalid hostname"),
+        (f"https://{'.'.join(['a' * 63] * 4)}.example/path", "invalid hostname"),
         ("https://999.999.999.999/path", "invalid IPv4 hostname"),
         ("https://xn--.example/path", "invalid hostname"),
         ("https://user@@example.com/path", "invalid authority"),
@@ -105,6 +108,7 @@ def test_rejects_malformed_http_urls(url, message):
         "http://127.0.0.1:8080/path",
         "https://[2001:db8::1]/path",
         "https://subdomain.example.com./path",
+        "https://bücher.example/path",
     ],
 )
 def test_accepts_valid_http_authorities(url):

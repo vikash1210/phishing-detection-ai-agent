@@ -112,7 +112,10 @@ def _url_validation_error(url: str) -> str | None:
             )
         ):
             return "url contains an invalid hostname"
-        dns_name.encode("ascii").decode("idna")
+        try:
+            dns_name.encode("ascii").decode("idna")
+        except UnicodeError:
+            return "url contains an invalid hostname"
     except (ValueError, UnicodeError):
         return "url is malformed or contains an invalid authority"
 
