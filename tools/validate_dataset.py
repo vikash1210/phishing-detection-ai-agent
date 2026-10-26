@@ -6,9 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-import pandas as pd
-
-from phishing_detection.data_validation import DatasetValidationError, validate_dataset
+from phishing_detection.data_ingestion import DatasetIngestionError, load_dataset
+from phishing_detection.data_validation import DatasetValidationError
 
 
 def main() -> int:
@@ -25,8 +24,8 @@ def main() -> int:
         parser.error(f"input file does not exist: {input_path}")
 
     try:
-        validated = validate_dataset(pd.read_csv(input_path, dtype=str, keep_default_na=False))
-    except (DatasetValidationError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        validated = load_dataset(input_path)
+    except (DatasetIngestionError, DatasetValidationError) as error:
         print(str(error), file=sys.stderr)
         return 1
 

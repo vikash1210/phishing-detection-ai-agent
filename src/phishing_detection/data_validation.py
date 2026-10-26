@@ -19,6 +19,7 @@ LABELS = {
 
 
 def _url_validation_error(url: str) -> str | None:
+    """Return a reason when a URL is invalid, or ``None`` when it is valid."""
     if any(
         character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F
         for character in url
@@ -123,11 +124,16 @@ def _url_validation_error(url: str) -> str | None:
 
 
 class DatasetValidationError(ValueError):
-    """Raised when a dataset violates the documented CSV contract."""
+    """Report that a dataset does not satisfy the documented URL/label CSV contract."""
 
 
 def validate_dataset(data: pd.DataFrame) -> pd.DataFrame:
-    """Validate a URL/label dataframe and return a normalized copy."""
+    """Validate every row and return a normalized copy of a valid URL/label dataframe.
+
+    The function rejects missing or extra columns, empty datasets, invalid URLs,
+    unsupported labels, and duplicate URLs. It trims URLs, normalizes accepted
+    labels to integer values, and leaves the input dataframe unchanged.
+    """
     if not isinstance(data, pd.DataFrame):
         raise TypeError("data must be a pandas DataFrame")
 

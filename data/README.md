@@ -57,3 +57,10 @@ python tools/validate_dataset.py path\to\input.csv --output path\to\validated.cs
 
 The output is written only after the entire input passes validation. Choose a
 separate output path; the tool refuses to overwrite the input file.
+
+For Python callers, `phishing_detection.data_ingestion.load_dataset(path)`
+reads the CSV columns as strings and returns the normalized dataframe only when
+the full file passes the same validation. It raises
+`DatasetIngestionError` for missing, empty, malformed, or non-UTF-8 CSV files,
+and `DatasetValidationError` for data that violates the CSV contract. The
+function is read-only and never modifies the source file.
