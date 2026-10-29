@@ -1,0 +1,26 @@
+
+Document Title: Phishing URL Security Guidelines
+
+Purpose:
+General defensive guidance for identifying suspicious URLs. This document does not verify whether a specific URL is malicious.
+
+Guideline 1: Inspect the hostname.
+Read the actual hostname carefully. A familiar brand name appearing in a longer or unrelated hostname does not prove that the URL belongs to that brand.
+
+Guideline 2: Check for misleading URL structure.
+Unexpected subdomains, misspelled brand names, unusual character sequences, and confusing hostname patterns may indicate risk. These indicators alone are not proof of phishing.
+
+Guideline 3: Treat HTTPS carefully.
+HTTPS encrypts the connection but does not prove that a website is trustworthy or legitimate.
+
+Guideline 4: Avoid interacting with suspicious links.
+Do not enter passwords, payment details, or verification codes on a suspicious website. Navigate to the official website using a known, trusted address instead.
+
+Guideline 5: Use independent security evidence.
+A URL classifier score is a model prediction, not a guarantee. Corroborate findings with trusted threat intelligence and other available evidence.
+
+Guideline 6: Report uncertainty.
+If reliable evidence is insufficient, describe the URL as unverified rather than asserting that it is safe or malicious.
+
+Safety Note:
+This document provides general guidance. It contains no verified threat-intelligence finding about a specific URL.
