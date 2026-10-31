@@ -1,105 +1,232 @@
 # Phishing Detection AI Agent
 
-An AI-assisted phishing URL analysis application that combines a pretrained machine-learning classifier, Google Safe Browsing threat intelligence, LangGraph orchestration, and retrieval-augmented generation (RAG) for security guidance.
+An AI-assisted phishing URL detection application that combines Machine Learning, Google Safe Browsing threat intelligence, LangGraph orchestration, and Retrieval-Augmented Generation (RAG) to analyze suspicious URLs and provide security insights.
 
-## Features
+## Project Overview
 
-- **ML-based URL classification:** Classifies URLs as phishing or legitimate using a pretrained model.
-- **Threat intelligence:** Checks URLs against Google Safe Browsing when configured.
-- **RAG-based guidance:** Retrieves relevant security guidance from a local knowledge base.
-- **Risk assessment:** Combines available signals into `HIGH RISK`, `SUSPICIOUS`, or `UNVERIFIED` outcomes.
-- **FastAPI backend:** Exposes health and prediction endpoints.
-- **Streamlit frontend:** Provides an interactive interface for URL analysis.
-- **Automated tests:** Covers API, agent graph, RAG components, threat intelligence, and risk assessment.
+The Phishing Detection AI Agent analyzes submitted URLs using multiple signals:
 
-> Important: A legitimate ML classification or no match from Google Safe Browsing does not guarantee that a URL is safe. The model score is not necessarily a calibrated probability.
+- Machine Learning-based URL classification.
+- Google Safe Browsing threat intelligence.
+- RAG-based retrieval of phishing security guidelines.
+- LangGraph workflow orchestration.
+- Risk assessment based on available evidence.
+
+The application provides an interactive Streamlit frontend and a FastAPI backend.
+
+> **Important:** A legitimate ML prediction or a Google Safe Browsing no-match result does not guarantee that a URL is safe.
+
+## Key Features
+
+- **ML Classification:** Uses a pretrained ONNX model to classify URLs.
+- **Threat Intelligence:** Integrates Google Safe Browsing API.
+- **RAG Pipeline:** Retrieves relevant phishing security guidelines.
+- **LangGraph Workflow:** Coordinates URL validation, classification, threat lookup, and evidence retrieval.
+- **Risk Assessment:** Produces HIGH RISK, SUSPICIOUS, or UNVERIFIED outcomes.
+- **FastAPI Backend:** Provides REST API endpoints.
+- **Streamlit Frontend:** Provides an interactive URL analysis interface.
+- **Rate Limiting:** Limits prediction requests to 10 requests per minute per client IP.
+- **Request Tracking:** Generates unique request IDs and records request latency.
+- **Error Handling:** Returns controlled error responses without exposing internal exception details.
+- **Automated Testing:** Includes API, agent, RAG, and risk-assessment tests.
+- **Docker Support:** Containerizes the FastAPI backend.
 
 ## Architecture
 
-1. The user submits a URL through the Streamlit interface.
-2. Streamlit sends the URL to the FastAPI `/predict` endpoint.
-3. The LangGraph workflow coordinates URL validation, ML classification, threat-intelligence lookup, and retrieval of security guidance.
-4. The API produces a risk assessment from the available signals.
-5. Streamlit displays the classification, threat-intelligence result, assessment reasons, and retrieved evidence.
+```mermaid
+flowchart TD
+    A[User] --> B[Streamlit Frontend]
+    B --> C[FastAPI Backend]
+    C --> D[LangGraph Workflow]
+
+    D --> E[URL Validation]
+    E --> F[ML Classification - ONNX]
+    E --> G[Google Safe Browsing API]
+    E --> H[RAG Retriever]
+
+    H --> I[Security Knowledge Base]
+
+    F --> J[Risk Assessment]
+    G --> J
+    H --> J
+
+    J --> K[Prediction Response]
+    K --> B
+```
 
 ## Tech Stack
 
-- Python
-- FastAPI and Uvicorn
-- Streamlit
-- LangGraph
-- ONNX Runtime
-- Sentence Transformers
-- RAG and semantic retrieval
-- Google Safe Browsing API
-- Pytest
+| Component | Technology |
+|---|---|
+| Programming Language | Python |
+| Backend | FastAPI |
+| Frontend | Streamlit |
+| Workflow Orchestration | LangGraph |
+| ML Inference | ONNX Runtime |
+| Embeddings | Sentence Transformers |
+| Retrieval | Semantic Search / NumPy |
+| Threat Intelligence | Google Safe Browsing API |
+| Testing | Pytest |
+| Dependency Management | uv |
+| Containerization | Docker |
 
-## Prerequisites
+## Project Structure
 
-- A compatible Python version (Python 3.10 or later according to `pyproject.toml`)
-- `uv`
-- A Google Safe Browsing API key for external threat-intelligence checks
-
-## Setup
-
-Clone the repository and enter its directory:
-
-```bash
-git clone <YOUR_REPOSITORY_URL>
-cd <YOUR_PROJECT_DIRECTORY>
+```text
+phishing-detection-ai-agent/
+│
+├── data/
+│   ├── knowledge_base/
+│   ├── README.md
+│   └── SOURCES.md
+│
+├── src/
+│   └── phishing_detection/
+│       ├── agent/
+│       │   └── graph.py
+│       ├── rag/
+│       │   ├── document_loader.py
+│       │   ├── embedding_service.py
+│       │   └── retriever.py
+│       ├── api.py
+│       ├── model.py
+│       ├── risk_assessment.py
+│       └── streamlit_app.py
+│
+├── tests/
+├── tools/
+├── Dockerfile
+├── .dockerignore
+├── .env.example
+├── pyproject.toml
+├── uv.lock
+├── evaluate_model.py
+├── threshold_analysis.py
+└── README.md
 ```
 
-Install dependencies:
+## Installation
+
+### Prerequisites
+
+- Python 3.10+
+- uv package manager
+- Docker (for containerized backend)
+- Google Safe Browsing API key
+
+### Clone Repository
+
+```bash
+git clone https://github.com/vikash1210/phishing-detection-ai-agent.git
+
+cd phishing-detection-ai-agent
+```
+
+### Install Dependencies
 
 ```bash
 uv sync
 ```
 
-Create a `.env` file in the project root with the following configuration:
+### Environment Configuration
 
-```dotenv
+Create a `.env` file in the project root:
+
+```env
 GOOGLE_SAFE_BROWSING_API_KEY=your_api_key_here
 PHISHING_API_URL=http://127.0.0.1:8000
+PHISHING_THRESHOLD=0.50
 ```
 
-Replace the API-key placeholder with your own key. Never commit `.env` or real credentials.
+Replace the placeholder with your own Google Safe Browsing API key.
 
-For the Streamlit application, `PHISHING_API_URL` defaults to `http://127.0.0.1:8000` when it is not set.
+Never commit `.env` or expose API credentials publicly.
 
-## Run the application
+## Run Locally
 
-### 1. Start the FastAPI backend
+### Start FastAPI Backend
 
 ```bash
 uv run uvicorn phishing_detection.api:app --app-dir src --reload
 ```
 
-API documentation is available at:
+API documentation:
 
-- `http://127.0.0.1:8000/docs`
-- Health check: `http://127.0.0.1:8000/health`
+http://127.0.0.1:8000/docs
 
-### 2. Start the Streamlit frontend
+Health check:
 
-Open a second terminal in the project directory and run:
+http://127.0.0.1:8000/health
+
+### Start Streamlit Frontend
+
+Open another terminal:
 
 ```bash
 uv run streamlit run src/phishing_detection/streamlit_app.py
 ```
 
-Open the local URL printed by Streamlit in your browser.
+Open the local Streamlit URL shown in the terminal.
 
-## API endpoints
+## Docker Setup
 
-### Health check
+### Build Docker Image
 
-`GET /health`
+```bash
+docker build -t phishing-detection-ai:latest .
+```
 
-### URL prediction
+### Run Container
 
-`POST /predict`
+```bash
+docker run -d --name phishing-detection-container -p 8000:8000 --env-file .env phishing-detection-ai:latest
+```
 
-Example request:
+### Check Running Container
+
+```bash
+docker ps
+```
+
+### Check Application Health
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "status": "healthy",
+  "app": "Phishing Detection AI Agent"
+}
+```
+
+### Open API Documentation
+
+http://127.0.0.1:8000/docs
+
+### Run Streamlit with Docker Backend
+
+Keep the FastAPI Docker container running and start Streamlit locally:
+
+```bash
+uv run streamlit run src/phishing_detection/streamlit_app.py
+```
+
+The Streamlit frontend connects to the backend through:
+
+`http://127.0.0.1:8000`
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Application health check |
+| POST | `/predict` | Analyze a submitted URL |
+
+### Prediction Request
 
 ```json
 {
@@ -107,31 +234,95 @@ Example request:
 }
 ```
 
-The response includes the model classification and score, retrieved evidence, threat-intelligence status, and final risk assessment.
+The response contains:
 
-## Run tests
+- ML prediction and phishing score.
+- Retrieved security evidence.
+- Google Safe Browsing status.
+- Final risk assessment.
+- Request tracking information in the response header.
 
-Run the automated test suite:
+## Risk Assessment
+
+The application uses available signals to determine the final risk level.
+
+| Risk Level | Meaning |
+|---|---|
+| HIGH RISK | External threat intelligence confirms a threat |
+| SUSPICIOUS | ML classifier predicts phishing |
+| UNVERIFIED | Available evidence does not establish safety |
+
+A no-match response from Google Safe Browsing is not proof that a URL is safe.
+
+## Model Evaluation
+
+The pretrained ONNX model was evaluated against its associated Hugging Face dataset test split.
+
+Recorded evaluation results:
+
+| Metric | Result |
+|---|---:|
+| Accuracy | 94.86% |
+| Precision | 94.76% |
+| Recall | 94.96% |
+| F1 Score | 94.86% |
+
+### Threshold Analysis
+
+The phishing classification threshold was evaluated using a validation split.
+
+A threshold of `0.50` was selected based on validation F1 score.
+
+An additional holdout evaluation produced:
+
+| Metric | Result |
+|---|---:|
+| Accuracy | 94.43% |
+| Precision | 93.65% |
+| Recall | 95.33% |
+| F1 Score | 94.48% |
+
+**Evaluation limitation:** The holdout data comes from the test split associated with the pretrained model's dataset. It is not an independent real-world benchmark. These metrics should not be interpreted as guaranteed real-world detection performance.
+
+## Testing
+
+Run the complete test suite:
 
 ```bash
 uv run pytest -q
 ```
 
-The most recently recorded test run passed 83 tests. Run the suite again after making changes to verify the current state.
+Latest recorded test result:
 
-## Knowledge base and data
+**109 tests passed.**
 
-Security guidance is stored under `data/knowledge_base/`. Dataset documentation is available under `data/README.md` and `data/SOURCES.md`.
+## Security Considerations
 
-Raw datasets are excluded from Git by the current `.gitignore`. Follow the relevant dataset licensing and provenance requirements before redistributing data.
+- Submitted URLs are validated before processing.
+- The application does not directly visit submitted URLs.
+- API prediction requests are rate-limited.
+- Unexpected exceptions return generic error responses.
+- Request IDs help trace individual API requests.
+- API credentials are stored in environment variables.
+- A legitimate classification does not establish that a URL is safe.
 
-## Limitations
+## Current Limitations
 
-- A threat-intelligence no-match result does not establish that a URL is safe.
-- Model scores should not be interpreted as calibrated probabilities unless calibration has been evaluated.
-- Retrieved security guidance provides context; it does not independently verify the submitted URL.
-- Detection quality depends on model performance, input validation, and the coverage and freshness of external threat feeds.
+- The application uses a pretrained model; its performance depends on the model and its training data.
+- Model scores are not necessarily calibrated probabilities.
+- Google Safe Browsing coverage is limited to its available threat intelligence.
+- RAG retrieves general security guidance, not verified threat intelligence for a specific URL.
+- Rate limiting is in-memory and process-local.
+- The project is an interview-ready prototype, not a production-certified security solution.
 
-## Development status
+## Future Improvements
 
-This project is an actively developed prototype. Passing automated tests demonstrates tested behavior, not guaranteed detection accuracy or production readiness. Further evaluation, security review, and deployment validation are required before production use.
+- Independent real-world model evaluation.
+- Persistent vector database for larger knowledge bases.
+- Improved monitoring and deployment.
+- Distributed rate limiting for multi-worker deployments.
+- Further model evaluation and calibration.
+
+## License
+
+Review the licenses and terms of the pretrained model, datasets, and dependencies before redistributing this project or its associated assets.

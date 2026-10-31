@@ -1,4 +1,7 @@
 
+import pytest
+
+import phishing_detection.agent.graph as graph_module
 from phishing_detection.agent.graph import (
     EVIDENCE_NOTE,
     build_phishing_graph,
@@ -35,14 +38,38 @@ class FakeRetriever:
         ]
 
 
-def test_valid_url_runs_classification_and_retrieval():
+@pytest.fixture
+def safe_browsing_mock(monkeypatch):
+    """Prevent real Google API calls during graph tests."""
+
+    calls = []
+
+    def fake_check(url):
+        calls.append(url)
+        return {
+            "status": "no_match",
+            "is_threat": False,
+            "matches": [],
+            "message": "Mock Safe Browsing response.",
+        }
+
+    monkeypatch.setattr(
+        graph_module,
+        "check_google_safe_browsing",
+        fake_check,
+    )
+
+    return calls
+
+
+def test_valid_url_runs_classification_and_retrieval(
+    safe_browsing_mock,
+):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
 
-    result = graph.invoke(
-        {"url": "https://example.com"}
-    )
+    result = graph.invoke({"url": "https://example.com"})
 
     assert result["normalized_url"] == "https://example.com"
     assert result["prediction"]["prediction"] == "phishing"
@@ -51,27 +78,78 @@ def test_valid_url_runs_classification_and_retrieval():
     assert result["evidence_note"] == EVIDENCE_NOTE
 
     assert classifier.calls == ["https://example.com"]
-    assert len(retriever.calls) == 1
     assert retriever.calls[0][1] == 3
+    assert safe_browsing_mock == ["https://example.com"]
 
 
-def test_invalid_url_does_not_run_classifier_or_retriever():
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com",
+        "https://",
+        "https:///example.com",
+        "https://example.com:abc",
+        "https://example.com:99999",
+        "https://user:password@example.com",
+        "https://-bad.example",
+        "https://bad-.example",
+        "https://example..com",
+        "https://bad_host.example",
+        "https://exa%mple.com",
+        "http://[invalid-ipv6]",
+        "https://exa mple.com",
+        "https://exa\nmple.com",
+        r"https://example.com\@evil.com",
+    ],
+)
+def test_invalid_urls_do_not_reach_processing_nodes(
+    url,
+    safe_browsing_mock,
+):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
 
-    result = graph.invoke({"url": "ftp://example.com"})
+    result = graph.invoke({"url": url})
 
     assert result["error"] == (
         "URL must be a valid HTTP or HTTPS URL."
     )
     assert classifier.calls == []
     assert retriever.calls == []
+    assert safe_browsing_mock == []
     assert "prediction" not in result
     assert "evidence" not in result
 
 
-def test_empty_url_returns_validation_error():
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1",
+        "http://192.168.1.1",
+        "http://localhost",
+        "http://[::1]",
+        "https://example.com",
+    ],
+)
+def test_valid_hosts_are_accepted(
+    url,
+    safe_browsing_mock,
+):
+    classifier = FakeClassifier()
+    retriever = FakeRetriever()
+    graph = build_phishing_graph(classifier, retriever)
+
+    result = graph.invoke({"url": url})
+
+    assert result["normalized_url"] == url
+    assert classifier.calls == [url]
+    assert safe_browsing_mock == [url]
+
+
+def test_empty_url_returns_validation_error(
+    safe_browsing_mock,
+):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
@@ -81,9 +159,27 @@ def test_empty_url_returns_validation_error():
     assert result["error"] == "URL must be a non-empty string."
     assert classifier.calls == []
     assert retriever.calls == []
+    assert safe_browsing_mock == []
 
 
-def test_url_is_trimmed_before_processing():
+def test_non_string_url_returns_validation_error(
+    safe_browsing_mock,
+):
+    classifier = FakeClassifier()
+    retriever = FakeRetriever()
+    graph = build_phishing_graph(classifier, retriever)
+
+    result = graph.invoke({"url": 123})
+
+    assert result["error"] == "URL must be a non-empty string."
+    assert classifier.calls == []
+    assert retriever.calls == []
+    assert safe_browsing_mock == []
+
+
+def test_url_is_trimmed_before_processing(
+    safe_browsing_mock,
+):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
@@ -92,3 +188,4 @@ def test_url_is_trimmed_before_processing():
 
     assert result["normalized_url"] == "https://example.com"
     assert classifier.calls == ["https://example.com"]
+    assert safe_browsing_mock == ["https://example.com"]

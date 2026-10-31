@@ -32,3 +32,7 @@ api_backup.py
 
 # Large raw datasets (keep local unless intentionally versioned)
 data/raw/
+# Logs and generated evaluation output
+*.log
+rag_output.txt
+evaluation_errors.csv

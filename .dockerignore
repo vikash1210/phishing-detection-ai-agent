@@ -1,0 +1,36 @@
+
+# Python environment
+.venv/
+__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Test and cache files
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs and temporary files
+*.log
+*.tmp
+rag_output.txt
+
+# Evaluation outputs
+evaluation_errors.csv
+
+# Local development files
+.vscode/
+.idea/
+
+# Python build artifacts
+dist/
+build/
+*.egg-info/

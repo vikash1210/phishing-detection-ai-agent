@@ -1,8 +1,15 @@
+
+import logging
+import time
+import uuid
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from threading import Lock
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from phishing_detection.agent.graph import build_phishing_graph
@@ -11,8 +18,12 @@ from phishing_detection.rag.retriever import SemanticRetriever
 from phishing_detection.risk_assessment import assess_risk
 
 
-# Load environment variables from the project's .env file.
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+RATE_LIMIT_REQUESTS = 10
+RATE_LIMIT_WINDOW_SECONDS = 60
 
 
 @asynccontextmanager
@@ -24,6 +35,9 @@ async def lifespan(app: FastAPI):
     app.state.retriever = retriever
     app.state.graph = build_phishing_graph(classifier, retriever)
 
+    app.state.rate_limit_requests = defaultdict(deque)
+    app.state.rate_limit_lock = Lock()
+
     yield
 
 
@@ -34,7 +48,7 @@ app = FastAPI(
         "Google Safe Browsing threat intelligence, LangGraph "
         "orchestration, RAG-based security guidance, and risk assessment."
     ),
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -67,6 +81,111 @@ class PredictionResponse(BaseModel):
     risk_assessment: RiskAssessment
 
 
+@app.middleware("http")
+async def request_tracking_middleware(
+    request: Request,
+    call_next,
+):
+    """Assign a unique ID and log request processing details."""
+
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+
+    start_time = time.perf_counter()
+
+    response = await call_next(request)
+
+    duration_ms = round(
+        (time.perf_counter() - start_time) * 1000,
+        2,
+    )
+
+    response.headers["X-Request-ID"] = request_id
+
+    logger.info(
+        "request_completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+
+    return response
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(
+    request: Request,
+    exc: Exception,
+):
+    """Log internal errors without exposing details to API clients."""
+
+    request_id = getattr(
+        request.state,
+        "request_id",
+        "unknown",
+    )
+
+    logger.exception(
+        "unhandled_api_exception",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": (
+                "An unexpected server error occurred. "
+                "Please try again later."
+            )
+        },
+        headers={"X-Request-ID": request_id},
+    )
+
+
+def enforce_rate_limit(request: Request) -> None:
+    """Allow a limited number of requests per client IP in a time window."""
+
+    client_host = (
+        request.client.host
+        if request.client is not None
+        else "unknown"
+    )
+
+    now = time.monotonic()
+
+    request_times = request.app.state.rate_limit_requests
+    lock = request.app.state.rate_limit_lock
+
+    with lock:
+        client_requests = request_times[client_host]
+
+        while (
+            client_requests
+            and now - client_requests[0] >= RATE_LIMIT_WINDOW_SECONDS
+        ):
+            client_requests.popleft()
+
+        if len(client_requests) >= RATE_LIMIT_REQUESTS:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Rate limit exceeded. "
+                    "Please try again after one minute."
+                ),
+                headers={"Retry-After": str(RATE_LIMIT_WINDOW_SECONDS)},
+            )
+
+        client_requests.append(now)
+
+
 @app.get("/health")
 def health():
     return {
@@ -80,6 +199,8 @@ def predict_url(
     request: PredictionRequest,
     http_request: Request,
 ):
+    enforce_rate_limit(http_request)
+
     graph = http_request.app.state.graph
 
     try:
@@ -129,7 +250,19 @@ def predict_url(
         raise
 
     except ValueError as exc:
+        logger.warning(
+            "prediction_request_rejected",
+            extra={
+                "request_id": getattr(
+                    http_request.state,
+                    "request_id",
+                    "unknown",
+                ),
+                "error_type": type(exc).__name__,
+            },
+        )
+
         raise HTTPException(
             status_code=422,
-            detail=str(exc),
+            detail="The submitted URL could not be processed.",
         ) from exc

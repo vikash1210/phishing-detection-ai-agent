@@ -1,5 +1,7 @@
 
+import ipaddress
 import os
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -28,6 +30,47 @@ EVIDENCE_NOTE = (
 SAFE_BROWSING_ENDPOINT = (
     "https://safebrowsing.googleapis.com/v4/threatMatches:find"
 )
+
+
+def is_valid_hostname(hostname: str) -> bool:
+    """Validate an IP address or a DNS-compatible hostname."""
+
+    if not hostname:
+        return False
+
+    # Accept valid IPv4 and IPv6 addresses, including private addresses.
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+
+    # Support internationalized domain names through IDNA encoding.
+    try:
+        ascii_hostname = hostname.encode("idna").decode("ascii")
+    except UnicodeError:
+        return False
+
+    # A single trailing dot is valid for a fully qualified domain name.
+    if ascii_hostname.endswith("."):
+        ascii_hostname = ascii_hostname[:-1]
+
+    if not ascii_hostname or len(ascii_hostname) > 253:
+        return False
+
+    labels = ascii_hostname.split(".")
+
+    for label in labels:
+        if not label or len(label) > 63:
+            return False
+
+        if not re.fullmatch(
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?",
+            label,
+        ):
+            return False
+
+    return True
 
 
 def check_google_safe_browsing(url: str) -> dict[str, Any]:
@@ -113,6 +156,7 @@ def validate_url_node(
     state: PhishingAgentState,
 ) -> dict[str, Any]:
     """Validate and normalize the input URL before processing."""
+
     url = state.get("url")
 
     if not isinstance(url, str) or not url.strip():
@@ -120,19 +164,31 @@ def validate_url_node(
 
     normalized_url = url.strip()
 
+    # Reject whitespace, control characters and raw backslashes.
+    if (
+        any(character.isspace() for character in normalized_url)
+        or any(ord(character) < 32 or ord(character) == 127
+               for character in normalized_url)
+        or "\\" in normalized_url
+    ):
+        return {
+            "error": "URL must be a valid HTTP or HTTPS URL."
+        }
+
     try:
         parsed = urlparse(normalized_url)
         hostname = parsed.hostname
 
-        # Accessing port also detects malformed port values.
+        # Accessing port detects malformed and out-of-range port values.
         _ = parsed.port
 
         if (
             parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
             or not hostname
-            or any(character.isspace() for character in normalized_url)
             or parsed.username is not None
             or parsed.password is not None
+            or not is_valid_hostname(hostname)
         ):
             return {
                 "error": "URL must be a valid HTTP or HTTPS URL."
@@ -148,6 +204,7 @@ def validate_url_node(
 
 def route_after_validation(state: PhishingAgentState) -> str:
     """Route invalid URLs directly to the end."""
+
     if state.get("error"):
         return "invalid"
 
@@ -161,6 +218,7 @@ def build_phishing_graph(classifier, retriever):
         state: PhishingAgentState,
     ) -> dict[str, Any]:
         """Run the existing pretrained phishing classifier."""
+
         prediction = classifier.predict(state["normalized_url"])
         return {"prediction": prediction}
 
@@ -168,6 +226,7 @@ def build_phishing_graph(classifier, retriever):
         state: PhishingAgentState,
     ) -> dict[str, Any]:
         """Check the URL against Google Safe Browsing."""
+
         result = check_google_safe_browsing(state["normalized_url"])
         return {"threat_intelligence": result}
 
@@ -175,6 +234,7 @@ def build_phishing_graph(classifier, retriever):
         state: PhishingAgentState,
     ) -> dict[str, Any]:
         """Retrieve relevant general security guidance."""
+
         query = (
             "What security checks should be considered when "
             f"evaluating this URL: {state['normalized_url']}"
