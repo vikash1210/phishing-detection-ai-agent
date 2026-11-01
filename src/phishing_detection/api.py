@@ -1,6 +1,5 @@
 
 import logging
-import os
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -20,6 +19,7 @@ from phishing_detection.db_models import ScannedURL, ScanResult
 from phishing_detection.model import PhishingURLClassifier
 from phishing_detection.rag.retriever import SemanticRetriever
 from phishing_detection.risk_assessment import assess_risk
+from phishing_detection.secrets import get_secret
 
 
 load_dotenv()
@@ -66,10 +66,15 @@ class PredictionResponse(BaseModel):
     risk_assessment: dict
     evidence: list
     evidence_note: str
+    llm_analysis: dict
 
 
 def verify_api_key(http_request: Request) -> None:
-    expected_api_key = os.getenv("GMAIL_ADDON_API_KEY")
+    try:
+        expected_api_key = get_secret("GMAIL_ADDON_API_KEY")
+    except RuntimeError:
+        expected_api_key = None
+
     provided_api_key = http_request.headers.get("X-API-Key", "")
 
     if not expected_api_key:
@@ -159,6 +164,7 @@ def save_scan(
     except (SQLAlchemyError, ValueError, KeyError):
         db.rollback()
         logger.exception("Unable to save phishing scan history.")
+
     finally:
         db.close()
 
@@ -169,6 +175,7 @@ async def unexpected_exception_handler(
     exc: Exception,
 ):
     logger.exception("Unexpected API error.")
+
     return JSONResponse(
         status_code=500,
         content={
@@ -214,7 +221,11 @@ def predict_url(
 
         threat_intelligence = result.get(
             "threat_intelligence",
-            {"status": "unavailable", "is_threat": None, "matches": []},
+            {
+                "status": "unavailable",
+                "is_threat": None,
+                "matches": [],
+            },
         )
 
         risk_result = assess_risk(
@@ -233,6 +244,13 @@ def predict_url(
             "evidence_note": result.get(
                 "evidence_note",
                 "Retrieved evidence is general security guidance, not independent URL verification.",
+            ),
+            "llm_analysis": result.get(
+                "llm_analysis",
+                {
+                    "status": "not_available",
+                    "message": "LLM analysis was not returned by the workflow.",
+                },
             ),
         }
 
@@ -320,77 +338,6 @@ def get_scans(
                 "id": str(scan_result.id),
                 "url": scanned_url.original_url,
                 "original_url": scanned_url.original_url,
-                "normalized_url": scanned_url.normalized_url,
-                "domain": scanned_url.domain,
-                "label": scan_result.model_label,
-                "prediction": scan_result.prediction,
-                "phishing_score": scan_result.phishing_score,
-                "threat_status": scan_result.threat_status,
-                "risk_level": scan_result.risk_level,
-                "verification_status": scan_result.verification_status,
-                "scanned_at": (
-                    scan_result.scanned_at.isoformat()
-                    if scan_result.scanned_at
-                    else None
-                ),
-            })
-
-        return {
-            "total": total,
-            "items_returned": len(scans),
-            "limit": limit,
-            "offset": offset,
-            "scans": scans,
-        }
-
-    except SQLAlchemyError as exc:
-        logger.exception("Unable to retrieve scan history.")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to retrieve scan history.",
-        ) from exc
-
-    finally:
-        db.close()
-    if limit < 1 or limit > 100:
-        raise HTTPException(
-            status_code=422,
-            detail="Limit must be between 1 and 100.",
-        )
-
-    if offset < 0:
-        raise HTTPException(
-            status_code=422,
-            detail="Offset cannot be negative.",
-        )
-
-    db = SessionLocal()
-
-    try:
-        query = (
-            db.query(ScannedURL, ScanResult)
-            .join(
-                ScanResult,
-                ScanResult.scanned_url_id == ScannedURL.id,
-            )
-        )
-
-        total = query.count()
-
-        records = (
-            query.order_by(ScanResult.scanned_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
-
-        scans = []
-
-        for scanned_url, scan_result in records:
-                scans.append({
-    "id": str(scan_result.id),
-    "url": scanned_url.original_url,
-    "original_url": scanned_url.original_url,
                 "normalized_url": scanned_url.normalized_url,
                 "domain": scanned_url.domain,
                 "label": scan_result.model_label,

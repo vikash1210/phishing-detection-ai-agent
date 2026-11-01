@@ -1,4 +1,6 @@
 
+import threading
+
 from fastapi.testclient import TestClient
 
 import phishing_detection.api as api_module
@@ -13,6 +15,9 @@ class FakeGraph:
 
 
 def create_test_client(monkeypatch, error):
+    fake_graph = FakeGraph(error)
+
+    # Mock classifier and retriever to avoid loading real dependencies.
     monkeypatch.setattr(
         api_module,
         "PhishingURLClassifier",
@@ -25,13 +30,46 @@ def create_test_client(monkeypatch, error):
         lambda: object(),
     )
 
+    # Provide the fake graph used by the API endpoint.
     monkeypatch.setattr(
         api_module,
         "build_phishing_graph",
-        lambda classifier, retriever: FakeGraph(error),
+        lambda classifier, retriever: fake_graph,
     )
 
-    monkeypatch.setenv("GMAIL_ADDON_API_KEY", "test-api-key")
+    # Mock API key retrieval.
+    monkeypatch.setenv(
+        "GMAIL_ADDON_API_KEY",
+        "test-api-key",
+    )
+
+    monkeypatch.setattr(
+        api_module,
+        "get_secret",
+        lambda name: "test-api-key",
+    )
+
+    # Initialize application state required by the API.
+    monkeypatch.setattr(
+        api_module.app.state,
+        "graph",
+        fake_graph,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        api_module.app.state,
+        "rate_limit_store",
+        {},
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        api_module.app.state,
+        "rate_limit_lock",
+        threading.Lock(),
+        raising=False,
+    )
 
     return TestClient(
         api_module.app,
@@ -39,9 +77,7 @@ def create_test_client(monkeypatch, error):
     )
 
 
-def test_unexpected_exception_does_not_expose_internal_details(
-    monkeypatch,
-):
+def test_unhandled_exception_returns_sanitized_500(monkeypatch):
     secret_message = (
         "SECRET_INTERNAL_PATH C:\\private\\server\\database"
     )
@@ -72,7 +108,7 @@ def test_unexpected_exception_does_not_expose_internal_details(
     assert "Traceback" not in response.text
 
 
-def test_value_error_does_not_expose_internal_details(monkeypatch):
+def test_value_error_returns_sanitized_422(monkeypatch):
     secret_message = (
         "SECRET_INTERNAL_PATH C:\\private\\server\\model"
     )

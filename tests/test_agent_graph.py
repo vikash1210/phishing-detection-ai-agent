@@ -1,3 +1,4 @@
+import os
 
 import pytest
 
@@ -38,6 +39,25 @@ class FakeRetriever:
         ]
 
 
+class FakeGroqResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            "The URL has suspicious indicators. "
+                            "Verify the domain before proceeding."
+                        )
+                    }
+                }
+            ]
+        }
+
+
 @pytest.fixture
 def safe_browsing_mock(monkeypatch):
     """Prevent real Google API calls during graph tests."""
@@ -53,11 +73,30 @@ def safe_browsing_mock(monkeypatch):
             "message": "Mock Safe Browsing response.",
         }
 
+    def fake_get_secret(name):
+        value = os.getenv(name)
+        if not value:
+            raise RuntimeError(
+                f"Test secret {name} is not configured."
+            )
+        return value
+
     monkeypatch.setattr(
         graph_module,
         "check_google_safe_browsing",
         fake_check,
     )
+
+    # Tests must use environment-based dummy secrets,
+    # never the real Windows Credential Manager.
+    monkeypatch.setattr(
+        graph_module,
+        "get_secret",
+        fake_get_secret,
+    )
+
+    monkeypatch.setenv("ENABLE_LLM_ANALYSIS", "false")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
     return calls
 
@@ -80,6 +119,8 @@ def test_valid_url_runs_classification_and_retrieval(
     assert classifier.calls == ["https://example.com"]
     assert retriever.calls[0][1] == 3
     assert safe_browsing_mock == ["https://example.com"]
+
+    assert result["llm_analysis"]["status"] == "disabled"
 
 
 @pytest.mark.parametrize(
@@ -147,9 +188,7 @@ def test_valid_hosts_are_accepted(
     assert safe_browsing_mock == [url]
 
 
-def test_empty_url_returns_validation_error(
-    safe_browsing_mock,
-):
+def test_empty_url_returns_validation_error(safe_browsing_mock):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
@@ -177,9 +216,7 @@ def test_non_string_url_returns_validation_error(
     assert safe_browsing_mock == []
 
 
-def test_url_is_trimmed_before_processing(
-    safe_browsing_mock,
-):
+def test_url_is_trimmed_before_processing(safe_browsing_mock):
     classifier = FakeClassifier()
     retriever = FakeRetriever()
     graph = build_phishing_graph(classifier, retriever)
@@ -189,3 +226,105 @@ def test_url_is_trimmed_before_processing(
     assert result["normalized_url"] == "https://example.com"
     assert classifier.calls == ["https://example.com"]
     assert safe_browsing_mock == ["https://example.com"]
+
+
+def test_groq_analysis_success(monkeypatch, safe_browsing_mock):
+    """Verify successful Groq analysis and evidence forwarding."""
+
+    monkeypatch.setenv("ENABLE_LLM_ANALYSIS", "true")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+    request_calls = []
+
+    def fake_post(url, **kwargs):
+        request_calls.append((url, kwargs))
+        return FakeGroqResponse()
+
+    monkeypatch.setattr(
+        graph_module.httpx,
+        "post",
+        fake_post,
+    )
+
+    classifier = FakeClassifier()
+    retriever = FakeRetriever()
+    graph = build_phishing_graph(classifier, retriever)
+
+    result = graph.invoke({"url": "https://example.com"})
+
+    assert result["llm_analysis"]["status"] == "success"
+    assert result["llm_analysis"]["model"] == "openai/gpt-oss-20b"
+    assert "suspicious indicators" in (
+        result["llm_analysis"]["analysis"]
+    )
+
+    assert len(request_calls) == 1
+
+    request_url, request_kwargs = request_calls[0]
+
+    assert request_url == graph_module.GROQ_ENDPOINT
+    assert (
+        request_kwargs["headers"]["Authorization"]
+        == "Bearer test-groq-key"
+    )
+
+    sent_messages = request_kwargs["json"]["messages"]
+    sent_input = sent_messages[1]["content"]
+
+    assert "Inspect the hostname carefully." in sent_input
+
+
+def test_groq_analysis_missing_api_key(
+    monkeypatch,
+    safe_browsing_mock,
+):
+    """Verify missing Groq API key does not break the graph."""
+
+    monkeypatch.setenv("ENABLE_LLM_ANALYSIS", "true")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    classifier = FakeClassifier()
+    retriever = FakeRetriever()
+    graph = build_phishing_graph(classifier, retriever)
+
+    result = graph.invoke({"url": "https://example.com"})
+
+    assert result["llm_analysis"]["status"] == "not_configured"
+    assert classifier.calls == ["https://example.com"]
+    assert retriever.calls
+
+
+def test_groq_api_failure_does_not_break_graph(
+    monkeypatch,
+    safe_browsing_mock,
+):
+    """Verify Groq API failure preserves the existing workflow."""
+
+    monkeypatch.setenv("ENABLE_LLM_ANALYSIS", "true")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+
+    def fake_post(url, **kwargs):
+        raise graph_module.httpx.TimeoutException(
+            "Mock Groq timeout."
+        )
+
+    monkeypatch.setattr(
+        graph_module.httpx,
+        "post",
+        fake_post,
+    )
+
+    classifier = FakeClassifier()
+    retriever = FakeRetriever()
+    graph = build_phishing_graph(classifier, retriever)
+
+    result = graph.invoke({"url": "https://example.com"})
+
+    assert result["llm_analysis"]["status"] == "unavailable"
+
+    # Existing detection workflow must still complete.
+    assert result["prediction"]["prediction"] == "phishing"
+    assert result["evidence"]
+    assert result["threat_intelligence"]["status"] == "no_match"
+    assert classifier.calls == ["https://example.com"]

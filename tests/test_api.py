@@ -1,10 +1,12 @@
-import pytest
 
+import os
+from datetime import datetime, timedelta, timezone
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from datetime import datetime, timedelta, timezone
 
 from phishing_detection.db_models import ScanResult, ScannedURL
 import phishing_detection.agent.graph as graph_module
@@ -14,8 +16,23 @@ from phishing_detection.database import Base
 
 @pytest.fixture(autouse=True)
 def configure_test_api_key(monkeypatch):
-    """Configure API authentication for tests."""
+    """Configure isolated API authentication for tests."""
+
     monkeypatch.setenv("GMAIL_ADDON_API_KEY", "test-api-key")
+
+    def fake_get_secret(name):
+        value = os.getenv(name)
+        if not value:
+            raise RuntimeError(
+                f"Test secret {name} is not configured."
+            )
+        return value
+
+    monkeypatch.setattr(
+        api_module,
+        "get_secret",
+        fake_get_secret,
+    )
 
 
 @pytest.fixture(autouse=True)

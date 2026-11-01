@@ -5,19 +5,23 @@ from dotenv import load_dotenv
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Load environment variables from the project's .env file.
+from phishing_detection.secrets import get_secret
+
+# Load non-secret configuration from .env.
 load_dotenv()
 
 
 def build_database_url(require_password: bool = True) -> URL:
     """Build the PostgreSQL connection URL from environment variables."""
 
-    password = os.getenv("POSTGRES_PASSWORD")
+    try:
+        password = get_secret("POSTGRES_PASSWORD")
+    except RuntimeError:
+        password = None
 
     if require_password and not password:
         raise RuntimeError(
-            "POSTGRES_PASSWORD is missing. "
-            "Please configure it in your .env file."
+            "POSTGRES_PASSWORD is missing from Windows Credential Manager."
         )
 
     return URL.create(
@@ -31,19 +35,16 @@ def build_database_url(require_password: bool = True) -> URL:
 
 
 # Create the engine without requiring credentials during module import.
-# A real connection will still require valid database credentials.
 engine = create_engine(
     build_database_url(require_password=False),
     pool_pre_ping=True,
 )
 
 
-# Common parent class for all SQLAlchemy database models.
 class Base(DeclarativeBase):
     pass
 
 
-# Creates database sessions for application operations.
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
