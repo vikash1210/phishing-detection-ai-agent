@@ -1,11 +1,18 @@
 
-# Python cache and test artifacts
+# Python cache and compiled files
 __pycache__/
-.pytest_cache/
-*.egg-info/
 *.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+
+# Testing and coverage artifacts
+.pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
 
 # Virtual environments
 .venv/
@@ -16,23 +23,30 @@ env/
 .env
 .env.*
 !.env.example
+secrets/
 
-# IDE and operating system files
+# IDE and editor files
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Operating system files
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs and generated evaluation output
+# Logs and temporary output
 *.log
 rag_output.txt
+evaluation_errors.csv
 
 # Local backups
 api_backup.py
 
-# Large raw datasets (keep local unless intentionally versioned)
+# Large raw datasets
 data/raw/
-# Logs and generated evaluation output
-*.log
-rag_output.txt
-evaluation_errors.csv
+
+# Keep evaluation datasets and reports versioned.
+# data/evaluation/
+# reports/

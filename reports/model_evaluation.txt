@@ -1,0 +1,47 @@
+
+PHISHING DETECTION MODEL EVALUATION
+===================================
+
+Evaluation date: 2026-11-01 10:54:33
+Model: pirocheto/phishing-url-detection (ONNX)
+Threshold: 0.5
+Dataset: UCI PhiUSIIL
+Evaluation method: Stratified sample
+Sample size: 2000
+Class distribution: 1000 Legitimate, 1000 Phishing
+
+METRICS
+-------
+
+Accuracy:  0.8015
+Precision: 1.0000
+Recall:    0.6030
+F1-score:  0.7523
+
+CONFUSION MATRIX
+----------------
+
+                 Predicted
+                 Legit  Phish
+
+Actual Legit      1000      0
+Actual Phish       397    603
+
+Classification Report
+---------------------
+
+              precision    recall  f1-score   support
+
+  Legitimate       0.72      1.00      0.83      1000
+    Phishing       1.00      0.60      0.75      1000
+
+    accuracy                           0.80      2000
+   macro avg       0.86      0.80      0.79      2000
+weighted avg       0.86      0.80      0.79      2000
+
+
+NOTE:
+This is a 2,000-URL sample evaluation.
+Results may be affected by dataset and model
+distribution differences. They do not guarantee
+real-world production performance.

@@ -31,6 +31,8 @@ def create_test_client(monkeypatch, error):
         lambda classifier, retriever: FakeGraph(error),
     )
 
+    monkeypatch.setenv("GMAIL_ADDON_API_KEY", "test-api-key")
+
     return TestClient(
         api_module.app,
         raise_server_exceptions=False,
@@ -53,6 +55,7 @@ def test_unexpected_exception_does_not_expose_internal_details(
         response = client.post(
             "/predict",
             json={"url": "https://example.com"},
+            headers={"X-API-Key": "test-api-key"},
         )
 
     assert response.status_code == 500
@@ -83,6 +86,7 @@ def test_value_error_does_not_expose_internal_details(monkeypatch):
         response = client.post(
             "/predict",
             json={"url": "https://example.com"},
+            headers={"X-API-Key": "test-api-key"},
         )
 
     assert response.status_code == 422
